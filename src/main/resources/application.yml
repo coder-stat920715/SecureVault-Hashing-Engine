@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: securevault-hashing-engine
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/vaultdb}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  h2:
+    console:
+      enabled: ${VAULT_H2_CONSOLE:false}
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+
+vault:
+  jwt:
+    # >= 32 bytes. Override with VAULT_JWT_SECRET in every real environment.
+    secret: ${VAULT_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef!}
+    issuer: securevault
+    ttl: 1h
+  password:
+    algorithm: ARGON2          # ARGON2 | BCRYPT
+    salt-length: 16
+    hash-length: 32
+    parallelism: 1
+    memory-kib: 19456          # OWASP minimum profile: m=19 MiB, t=2, p=1
+    iterations: 2
+    bcrypt-strength: 12        # work factor: 2^12 rounds
+  storage:
+    root-dir: ${VAULT_STORAGE_DIR:./data/storage}
+  webhook:
+    secret: ${VAULT_WEBHOOK_SECRET:whsec_dev_only_change_me}
+  cluster:
+    virtual-nodes: 100
+    hash-function: MD5         # MD5 | MURMUR3
+    initial-nodes: worker-a,worker-b,worker-c
+  dev:
+    h2-console-enabled: ${VAULT_H2_CONSOLE:false}

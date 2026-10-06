@@ -1,0 +1,103 @@
+### SecureVault-Hashing-Engine: end-to-end requests for all 6 hashing use cases
+### Works with the IntelliJ HTTP Client. For the VS Code REST Client change the token line to:
+###   @token = {{login.response.body.$.token}}
+
+@host = http://localhost:8080
+
+### 1a. Register (Argon2id hash stored, never the password)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{ "username": "alice", "password": "CorrectHorse-Battery9" }
+
+### 1b. Login -> HS256-signed JWT
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "username": "alice", "password": "CorrectHorse-Battery9" }
+
+###
+@token = {{login.response.body.token}}
+
+### 1c. Wrong password -> 401
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "username": "alice", "password": "wrong-password-123" }
+
+### 2/3. Upload (SHA-256 streamed + stored). Upload it twice and watch "deduplicated": true
+# @name upload
+POST {{host}}/api/documents
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="hello.txt"
+Content-Type: text/plain
+
+Hello, vault!
+--WebAppBoundary--
+
+###
+@docId = {{upload.response.body.id}}
+
+### 2. Download: server re-hashes the file and compares with the stored manifest (422 on mismatch)
+GET {{host}}/api/documents/download/{{docId}}
+Authorization: Bearer {{token}}
+
+### 3. Deduplication statistics
+GET {{host}}/api/documents/stats
+Authorization: Bearer {{token}}
+
+### 4a. Webhook without signature -> 401
+POST {{host}}/api/webhooks/partner-event
+Content-Type: application/json
+
+{"event":"document.shared","id":"42"}
+
+### 4b. Webhook with a wrong signature -> 401
+POST {{host}}/api/webhooks/partner-event
+Content-Type: application/json
+X-Vault-Signature: sha256=0000000000000000000000000000000000000000000000000000000000000000
+
+{"event":"document.shared","id":"42"}
+
+### 4c. Webhook with a VALID signature for the default dev secret -> 202
+### (works only if your client sends the body byte-for-byte without a trailing newline; otherwise use curl, see README)
+POST {{host}}/api/webhooks/partner-event
+Content-Type: application/json
+X-Vault-Signature: sha256=23e29fd2b050f2852197c74e5f303033be3cb34ee53c279aef4874d130887673
+
+{"event":"document.shared","id":"42"}
+
+### 5a. Verify the hash-chained audit ledger
+GET {{host}}/api/audit/verify
+Authorization: Bearer {{token}}
+
+### 5b. Latest audit blocks
+GET {{host}}/api/audit/logs?limit=10
+Authorization: Bearer {{token}}
+
+### 6a. Which worker receives this document?
+GET {{host}}/api/cluster/route-document/{{docId}}
+Authorization: Bearer {{token}}
+
+### 6b. Load balance across nodes
+GET {{host}}/api/cluster/node-distribution?sampleSize=20000
+Authorization: Bearer {{token}}
+
+### 6c. Add a node and see how few keys move (compared with hash % N)
+POST {{host}}/api/cluster/nodes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id": "worker-d", "address": "10.0.0.4:9000" }
+
+### 6d. Remove it again
+DELETE {{host}}/api/cluster/nodes/worker-d
+Authorization: Bearer {{token}}
+
+### Delete the document (reference-counted; physical file removed with the last reference)
+DELETE {{host}}/api/documents/{{docId}}
+Authorization: Bearer {{token}}
